@@ -175,4 +175,21 @@ class IBMDBInstaller(ExtensionHelper):
         self._runCmd(os.environ, self._ctx['BUILD_DIR'], ['rm', '-rf', self._ctx['COMPILATION_DIR']])
         self._logMsg('-- House-keeping Done ----------------------------')
 
-IBMDBInstaller.register(__name__)
+# Extension Methods
+def preprocess_commands(ctx):
+    return ()
+
+
+def service_commands(ctx):
+    return {}
+
+
+def service_environment(ctx):
+    return {}
+
+def compile(install):
+    ibmdb = IBMDBInstaller(install.builder._ctx)
+    if ibmdb.should_install():
+        _log.info("Installing DB2...")
+        ibmdb._compile(install)
+    return 0
