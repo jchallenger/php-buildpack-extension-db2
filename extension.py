@@ -161,7 +161,7 @@ class IBMDBInstaller(ExtensionHelper):
         self._logMsg('-- Downloading IBM DB Extensions -----------------')
         for ibmdbExtn in ['IBM_DB2', 'PDO_IBM']:
             ibmdbExtnDownloadDir = self._ctx[ibmdbExtn + '_DLDIR']
-            self._install_direct(
+            install = self._install_direct(
                 self._ctx[ibmdbExtn + '_DLURL'],
                 None,
                 ibmdbExtnDownloadDir,
