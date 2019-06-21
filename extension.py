@@ -11,17 +11,13 @@ from extension_helpers import ExtensionHelper
 
 PKGDOWNLOADS =  {
     #CLI_DRIVER
-     'IBMDBCLIDRIVER1_DLFILE': 'linuxx64_odbc_cli.tar.gz',
-     'IBMDBCLIDRIVER1_DLURL': 'https://public.dhe.ibm.com/ibmdl/export/pub/software/data/db2/drivers/odbc_cli/{IBMDBCLIDRIVER1_DLFILE}',
+    'IBMDBCLIDRIVER1_DLFILE': 'linuxx64_odbc_cli.tar.gz',
+    'IBMDBCLIDRIVER1_DLURL': 'https://public.dhe.ibm.com/ibmdl/export/pub/software/data/db2/drivers/odbc_cli/{IBMDBCLIDRIVER1_DLFILE}',
 
     #IBM_DB Packages
     'IBM_DB2_VERSION': '2.0.8',
-    'IBM_DB2_DLFILE': 'ibm_db2-{IBM_DB2_VERSION}.tgz',
-    'IBM_DB2_DLURL': 'https://pecl.php.net/get/{IBM_DB2_DLFILE}',
-
-    'PDO_IBM_VERSION': '1.3.6',
-    'PDO_IBM_DLFILE': 'PDO_IBM-{PDO_IBM_VERSION}.tgz',
-    'PDO_IBM_DLURL': 'https://pecl.php.net/get/{PDO_IBM_DLFILE}',
+    'IBM_DB2_DLFILE': 'ibm_db2-{IBM_DB2_VERSION}.tar.gz',
+    'IBM_DB2_DLURL': 'https://github.com/jchallenger/php-buildpack-extension-db2/raw/master/bin/{IBM_DB2_DLFILE}',
 }
 
 class IBMDBInstaller(ExtensionHelper):
@@ -49,7 +45,6 @@ class IBMDBInstaller(ExtensionHelper):
         pkgdownloads['IBMDBCLIDRIVER_INSTALL_DIR'] = os.path.join(self._ctx['BUILD_DIR'], 'ibmdb_clidriver')
         pkgdownloads['PHPSOURCE_INSTALL_DIR'] = os.path.join('{COMPILATION_DIR}', 'php')
         pkgdownloads['IBM_DB2_DLDIR'] = os.path.join('{PHPSOURCE_INSTALL_DIR}', 'ext', 'ibm_db')
-        pkgdownloads['PDO_IBM_DLDIR'] = os.path.join('{PHPSOURCE_INSTALL_DIR}', 'ext', 'pdo_ibm')
         return utils.FormattedDict(pkgdownloads)
 
     def _should_configure(self):
@@ -71,7 +66,7 @@ class IBMDBInstaller(ExtensionHelper):
         self._phpExtnDpath = os.path.join(self._phpBuildRootDpath, 'lib', 'php', 'extensions', self._phpExtnDir)
 
         self.install_clidriver()
-        self.download_extensions()
+        self.install_extensions()
         self.modifyPhpIni()
         self.cleanup()
         return 0
@@ -88,13 +83,14 @@ class IBMDBInstaller(ExtensionHelper):
 
     def _logMsg(self, logMsg):
         self._log.info(logMsg)
-        print("- IBMDB2: " + logMsg)
+        print("IBM_DB2: " + logMsg)
 
     def _install_direct(self, url, hsh, installDir, fileName=None, strip=False, extract=True):
         if not fileName:
             fileName = urlparse(url).path.split('/')[-1]
         fileToInstall = os.path.join(self._ctx['TMPDIR'], fileName)
         self._runCmd(os.environ, self._ctx['BUILD_DIR'], ['rm', '-rf', fileToInstall])
+        self._logMsg("  Downloading: " + url + " [" + fileToInstall + "]")
         self._installer._dwn.custom_extension_download(url, url, fileToInstall)
 
         if extract:
@@ -102,8 +98,9 @@ class IBMDBInstaller(ExtensionHelper):
             return self._installer._unzipUtil.extract(fileToInstall, installDir, strip)
         else:
             self._logMsg('Copying ' + fileToInstall + ' to ' + installDir)
-            shutil.copy(fileToInstall, installDir)
-            return installDir
+            self._runCmd(os.environ, self._ctx['BUILD_DIR'], ['cp', fileToInstall, installDir])
+            self._runCmd(os.environ, self._ctx['BUILD_DIR'], ['ls', '-l', installDir])
+            return fileToInstall
 
     def _runCmd(self, environ, currWorkDir, cmd, displayRunLog=False):
         stringioWriter = StringIO.StringIO()
@@ -136,9 +133,8 @@ class IBMDBInstaller(ExtensionHelper):
             pos = lines.index(extns[-1]) + 1
         else:
             pos = lines.index('#{PHP_EXTENSIONS}\n') + 1
+
         lines.insert(pos, 'extension=ibm_db2.so\n')
-        lines.insert(pos, 'extension=pdo.so\n')
-        lines.insert(pos, 'extension=pdo_ibm.so\n')
         with open(self._phpBuildIniFpath, 'wt') as phpIni:
             for line in lines:
                 phpIni.write(line)
@@ -157,24 +153,34 @@ class IBMDBInstaller(ExtensionHelper):
         self._compilationEnv['IBM_DB_HOME'] = self._ctx['IBMDBCLIDRIVER_INSTALL_DIR']
         self._logMsg('-- Installed IBM DB CLI Drivers ------------------')
 
-    def download_extensions(self):
-        self._logMsg('-- Downloading IBM DB Extensions -----------------')
-        for ibmdbExtn in ['IBM_DB2', 'PDO_IBM']:
-            ibmdbExtnDownloadDir = self._ctx[ibmdbExtn + '_DLDIR']
-            install = self._install_direct(
-                self._ctx[ibmdbExtn + '_DLURL'],
+
+    def install_extensions(self):
+        self._logMsg('-- Downloading IBM DB Extension -----------------')
+        ibmdbExtnDownloadDir = self._ctx['IBM_DB2_DLDIR']
+
+        try:
+            # download binary from our repo
+            installed = self._install_direct(
+                self._ctx['IBM_DB2_DLURL'],
                 None,
                 ibmdbExtnDownloadDir,
-                self._ctx[ibmdbExtn + '_DLFILE'],
+                self._ctx['IBM_DB2_DLFILE'],
                 True)
-            self._runCmd(self._compilationEnv, self._ctx['BUILD_DIR'],
-                ['find', ibmdbExtnDownloadDir, ("-name '" + ibmdbExtn.lower() + ".so'")])
 
+            # copy binary to extension folder
             self._runCmd(self._compilationEnv, self._ctx['BUILD_DIR'],
-                ['cp', os.path.join(ibmdbExtnDownloadDir,  ibmdbExtn.lower() + '.so'),
-                self._phpExtnDpath])
-            self._logMsg ('Installed extension ' + ibmdbExtn)
-        self._logMsg('-- Downloaded IBM DB Extensions ------------------')
+                ['cp', os.path.join(installed, "ibm_db2.so"), os.path.join(self._phpExtnDpath, "ibm_db2.so")])
+            pass
+        except:
+            self._log.error("!! Failed to install DB2 Extension")
+            self._logMsg("IBM Ext DL Dir: " + ibmdbExtnDownloadDir)
+            self._logMsg("IBM Ext DL File: " + self._ctx['IBM_DB2_DLFILE'])
+            self._logMsg("IBM Ext Final Dest: " + os.path.join(self._phpExtnDpath, "ibm_db2.so"))
+
+            pass
+
+
+        self._logMsg('-- Downloaded IBM DB Extension ------------------')
 
     def cleanup(self):
         self._logMsg('-- Some House-keeping ----------------------------')
